@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{BufReader, Error, Read, Write};
 
+#[warn(unused)]
 pub fn read_file(path: &str) -> Result<File, Error> {
     File::open(path)
 }

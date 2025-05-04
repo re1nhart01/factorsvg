@@ -1,5 +1,4 @@
-
-
+use std::path::{Path};
 
 pub fn is_input_not_file(content: String) -> bool {
    match content.split('.').nth(1) {
@@ -8,8 +7,7 @@ pub fn is_input_not_file(content: String) -> bool {
     }
 }
 
-use std::path::{Path, PathBuf};
-
+#[warn(unused)]
 pub fn remove_filename(path_str: &str) -> String {
     let path = Path::new(path_str);
     match path.parent() {

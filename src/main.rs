@@ -27,7 +27,7 @@ fn main() {
         }
     }
 
-    if (is_multifile && is_correct_input && is_correct_output) {
+    if is_multifile && is_correct_input && is_correct_output {
         let is_ok = run_multiple_files(arg.input.clone(), arg.output.clone(), arg.multithread);
         println!(
             "Status of work: {} with args input: {} output: {} multithread: {} mutliple: {}",
