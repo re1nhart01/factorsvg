@@ -1,7 +1,6 @@
 use regex::Regex;
 
 pub fn filter_and_fix(mut content: String) -> String {
-
     let content_clone = content.clone();
 
     let mut output = String::new();
@@ -9,34 +8,58 @@ pub fn filter_and_fix(mut content: String) -> String {
 
     let filters = [
         r"<defs[\s\S]*?</defs>",
-        r#"<g[^>]*>"#, r"</g>",
-        r#"transform="[^"]*""#, r#"style="[^"]*""#,
-        r#"stroke="[^"]*""#, r#"fill="[^"]*""#,
+        r#"<g[^>]*>"#,
+        r"</g>",
+        r#"transform="[^"]*""#,
+        r#"style="[^"]*""#,
+        r#"stroke="[^"]*""#,
+        r#"fill="[^"]*""#,
     ];
     for f in filters {
         let re = Regex::new(f).unwrap();
         content = re.replace_all(&content, "").to_string();
     }
 
-    for cap in Regex::new(r#"<rect\b[^>]*/?>"#).unwrap().find_iter(&content) {
+    for cap in Regex::new(r#"<rect\b[^>]*/?>"#)
+        .unwrap()
+        .find_iter(&content)
+    {
         path_data.push(rect_to_path(cap.as_str()));
     }
-    for cap in Regex::new(r#"<circle\b[^>]*/?>"#).unwrap().find_iter(&content) {
+    for cap in Regex::new(r#"<circle\b[^>]*/?>"#)
+        .unwrap()
+        .find_iter(&content)
+    {
         path_data.push(circle_to_path(cap.as_str()));
     }
-    for cap in Regex::new(r#"<ellipse\b[^>]*/?>"#).unwrap().find_iter(&content) {
+    for cap in Regex::new(r#"<ellipse\b[^>]*/?>"#)
+        .unwrap()
+        .find_iter(&content)
+    {
         path_data.push(ellipse_to_path(cap.as_str()));
     }
-    for cap in Regex::new(r#"<line\b[^>]*/?>"#).unwrap().find_iter(&content) {
+    for cap in Regex::new(r#"<line\b[^>]*/?>"#)
+        .unwrap()
+        .find_iter(&content)
+    {
         path_data.push(line_to_path(cap.as_str()));
     }
-    for cap in Regex::new(r#"<polygon\b[^>]*/?>"#).unwrap().find_iter(&content) {
+    for cap in Regex::new(r#"<polygon\b[^>]*/?>"#)
+        .unwrap()
+        .find_iter(&content)
+    {
         path_data.push(polyline_to_path(cap.as_str(), true));
     }
-    for cap in Regex::new(r#"<polyline\b[^>]*/?>"#).unwrap().find_iter(&content) {
+    for cap in Regex::new(r#"<polyline\b[^>]*/?>"#)
+        .unwrap()
+        .find_iter(&content)
+    {
         path_data.push(polyline_to_path(cap.as_str(), false));
     }
-    for cap in Regex::new(r#"<path\b[^>]+d="[^"]+"[^>]*/?>"#).unwrap().find_iter(&content) {
+    for cap in Regex::new(r#"<path\b[^>]+d="[^"]+"[^>]*/?>"#)
+        .unwrap()
+        .find_iter(&content)
+    {
         path_data.push(cap.as_str().to_string());
     }
 

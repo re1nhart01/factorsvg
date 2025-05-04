@@ -9,7 +9,6 @@ pub struct Arguments {
     #[arg(short, long)]
     pub output: String, // analogic with path, if multi = false, then just path to file
 
-
     #[arg(long)]
     pub multithread: bool, //multithreading with std::threads
 
