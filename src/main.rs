@@ -1,15 +1,33 @@
 use clap::Parser;
-use std::fs;
+use std::{fs, process::exit};
 
 mod args;
 mod fs_utils;
 mod xml;
+mod utils;
 
 fn main() {
     let arg = args::Arguments::parse();
 
     let is_multifile = arg.multi;
-    if (is_multifile) {
+
+    let is_correct_input = utils::is_input_not_file(arg.input.clone());
+    let is_correct_output = utils::is_input_not_file(arg.input.clone());
+    
+    if let Ok(existance) = fs::exists(arg.input.clone()) {
+        if !existance {
+            println!("Input path {} is not exists", arg.input.clone());
+            exit(0);
+        }
+    }
+    if let Ok(existance) = fs::exists(arg.output.clone()) {
+        if !existance {
+            println!("Input path {} is not exists", arg.output.clone());
+            exit(0);
+        }
+    }
+
+    if (is_multifile && is_correct_input && is_correct_output) {
         let is_ok = run_multiple_files(arg.input.clone(), arg.output.clone(), arg.multithread);
         println!(
             "Status of work: {} with args input: {} output: {} multithread: {} mutliple: {}",
