@@ -1,65 +1,63 @@
-use std::{fs::File, ptr::null};
-
 use regex::Regex;
-use svgdom::{Document, ElementId};
 
-mod xml;    
 mod fs;
-
+mod xml;
+mod args;
 
 fn main() {
-    let mut file = fs::read_file_as_text("src/no-internet.svg").unwrap_or_default();
+    let input = fs::read_file_as_text("src/heating.svg").expect("Can't read file");
+    let mut output = String::new();
 
-    let re = Regex::new(r#"<g\b[^>]*>"#).unwrap();
-    file = re.replace_all(file.clone().as_str(), "").to_string();
-    //.replace("\n", "") 
-    file = file.replace("<g>", "").replace("</g>", "");
-    println!("{}", file);
-    
-    let as_str = file.as_str();
+    let mut path_data = Vec::new();
+    let mut content = input.clone();
 
-    let mut document = Document::from_str(as_str).unwrap();
-
-    let mut all_path: String = String::new();
-
-    for node in document.root().descendants() {
-        if let Some(tag_id) = node.tag_id() {
-            println!("{}", tag_id);
-            let d = match tag_id {
-                ElementId::Rect => xml::parse_rectangle_rounded(node.clone()),
-                ElementId::Circle => xml::parse_circle(node.clone()),
-                ElementId::Ellipse => xml::parse_ellipse(node.clone()),
-                ElementId::Line => xml::parse_line(node.clone()),
-                ElementId::Polyline => xml::parse_polyline(node.clone()),
-                ElementId::Polygon => xml::parse_polygon(node.clone()),
-                ElementId::Path => {
-                    xml::get_attr_string(&node, "d").unwrap_or_default()
-                }
-                _ => String::new(),
-            };
-
-            println!("Test {} {}", tag_id, d);
-    
-            if !d.is_empty() {
-                all_path.push_str(&format!("{d} "));
-            }
-        }
-
-        //let x = node.get_attribute("x").map(|v| v.value.parse::<f32>().unwrap_or(0.0)).unwrap_or(0.0);
+    let filters = [
+        r"<defs[\s\S]*?</defs>",
+        r#"<g[^>]*>"#, r"</g>",
+        r#"transform="[^"]*""#, r#"style="[^"]*""#,
+        r#"stroke="[^"]*""#, r#"fill="[^"]*""#,
+    ];
+    for f in filters {
+        let re = Regex::new(f).unwrap();
+        content = re.replace_all(&content, "").to_string();
     }
 
-    println!("{}", all_path);
-
-    let final_svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
-    <path d="{all_path}"/>
-    </svg>"#);
-
-    let is_created = fs::create_file(String::from("aboba_cav.svg"), final_svg);
-
-    match is_created {
-        Some(error) => println!("Error: {}", error),
-        None => println!("Create successfully")
+    for cap in Regex::new(r#"<rect\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::rect_to_path(cap.as_str()));
+    }
+    for cap in Regex::new(r#"<circle\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::circle_to_path(cap.as_str()));
+    }
+    for cap in Regex::new(r#"<ellipse\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::ellipse_to_path(cap.as_str()));
+    }
+    for cap in Regex::new(r#"<line\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::line_to_path(cap.as_str()));
+    }
+    for cap in Regex::new(r#"<polygon\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::polyline_to_path(cap.as_str(), true));
+    }
+    for cap in Regex::new(r#"<polyline\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::polyline_to_path(cap.as_str(), false));
+    }
+    for cap in Regex::new(r#"<path\b[^>]+d="[^"]+"[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(cap.as_str().to_string());
     }
 
+    // Объединённый SVG
+    if let Some(viewbox) = xml::extract(&input, "viewBox") {
+        output = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}">
+<path d="{}"/>
+</svg>"#,
+            viewbox,
+            path_data
+                .iter()
+                .filter_map(|p| xml::extract(p, "d"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
+
+    fs::create_file(String::from("fixed_out.svg"), output).expect("Can't write file");
 }

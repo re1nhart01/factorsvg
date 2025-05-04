@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 regex = "1.11.1"
-usvg = "0.40"
+clap = { version = "4", features = ["derive"] }
+

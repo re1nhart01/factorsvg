@@ -1,209 +1,130 @@
-use std::io::Error;
-use svgdom::{AttributeValue, Document, Node, NodeData};
+use regex::Regex;
 
+use crate::xml;
 
+pub fn filter_and_fix(mut content: String) -> String {
 
-fn parse_attrs(node: &Node, key: &str) -> f32 {
-        match node.attributes().get(key) {
-            Some(attr) => match &attr.value {
-                AttributeValue::Length(l) => l.num as f32,
-                AttributeValue::String(s) => s.parse::<f32>().unwrap_or(0.0),
-                _ => 0.0,
-            },
-            None => 0.0,
-        }
-}
+    let content_clone = content.clone();
 
-pub fn get_attr_string(node: &Node, key: &str) -> Option<String> {
-    println!("{} KEY", key);
+    let mut output = String::new();
+    let mut path_data = Vec::new();
 
-    if let Some(attr) = node.attributes().get(key) {
-        let val = match &attr.value {
-            AttributeValue::String(s) => Some(s.clone()),
-            AttributeValue::Length(l) => Some(l.num.to_string()),
-            AttributeValue::Path(p) => Some(format!("{}", p)),
-            _ => None,
-        };
-
-        if let Some(ref s) = val {
-            println!("VALUE: {}", s);
-        } else {
-            println!("(type not supported)");
-        }
-
-        return val;
+    let filters = [
+        r"<defs[\s\S]*?</defs>",
+        r#"<g[^>]*>"#, r"</g>",
+        r#"transform="[^"]*""#, r#"style="[^"]*""#,
+        r#"stroke="[^"]*""#, r#"fill="[^"]*""#,
+    ];
+    for f in filters {
+        let re = Regex::new(f).unwrap();
+        content = re.replace_all(&content, "").to_string();
     }
 
-    println!("(not found)");
-    None
-}
-
-// fn parse_rectangle<'a>(node_item: Node, arg: &'a str) ->  &'a str {
-//     arg
-// }
-
-pub fn parse_rectangle_rounded(node_item: Node) -> String {
-    let x = parse_attrs(&node_item, "x");
-    let y = parse_attrs(&node_item, "y");
-    let w = parse_attrs(&node_item, "width");
-    let h = parse_attrs(&node_item, "height");
-    let rx = parse_attrs(&node_item, "rx");
-    let ry = parse_attrs(&node_item, "ry");
-
-    let rx = if rx == 0.0 { ry } else { rx };
-    let ry = if ry == 0.0 { rx } else { ry };
-
-    println!("parse rect {}", x);
-
-    if rx > 0.0 || ry > 0.0 {
-        return format!(
-                    "M {mx},{y} \
-        h {w1} \
-        a {rx},{ry} 0 0 1 {rx},{ry} \
-        v {h1} \
-        a {rx},{ry} 0 0 1 -{rx},{ry} \
-        h -{w1} \
-        a {rx},{ry} 0 0 1 -{rx},-{ry} \
-        v -{h1} \
-        a {rx},{ry} 0 0 1 {rx},-{ry} \
-        Z",
-                    mx = x + rx,
-                    y = y,
-                    w1 = w - 2.0 * rx,
-                    h1 = h - 2.0 * ry,
-                    rx = rx,
-                    ry = ry
-        )
-    } else {
-        return format!("M {x},{y} h {w} v {h} h -{w} Z")
+    for cap in Regex::new(r#"<rect\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::rect_to_path(cap.as_str()));
     }
-}
-
-pub fn parse_rectangle(node_item: Node) -> String {
-    /**
-     * <rect x y width height rx ry>	M x,y h width a rx,ry 0 0 1 rx,ry v height a rx,ry 0 0 1 -rx,ry h -width a rx,ry 0 0 1 -rx,-ry v -height a rx,ry 0 0 1 rx,-ry Z (если rx/ry есть)
-или
-M x,y h width v height h -width Z (если углы прямые)
-     * 
-     */
-
-    let x = parse_attrs(&node_item, "x");
-    let y = parse_attrs(&node_item, "y");
-    let w = parse_attrs(&node_item, "width");
-    let h = parse_attrs(&node_item, "height");
-
-     let formatted_string = format!("M {x},{y} h {w} v {h} h -{w} Z");
-
-
-    return formatted_string;
-}
-
-
-pub fn parse_circle(node_item: Node) -> String {
-   //<circle cx cy r>	M cx+r,cy A r,r 0 1,0 cx-r,cy A r,r 0 1,0 cx+r,cy
-
-   let cx = parse_attrs(&node_item, "сx");
-   let cy = parse_attrs(&node_item, "сy");
-   let r = parse_attrs(&node_item, "r");
-
-   let cx_p_r = cx + r;
-   let cx_m_r = cx - r;
-
-   let formatted_string = format!(
-            "M {cx_p_r},{cy} \
-        A {r},{r} 0 1,0 {cx_m_r},{cy} \
-        A {r},{r} 0 1,0 {cx_p_r},{cy}"
-    );
-
-   return formatted_string;
-}
-
-pub fn parse_ellipse(node_item: Node) -> String {
-    //<ellipse cx cy rx ry>	M cx+rx,cy A rx,ry 0 1,0 cx-rx,cy A rx,ry 0 1,0 cx+rx,cy
-
-    let cx = parse_attrs(&node_item, "сx");
-    let cy = parse_attrs(&node_item, "сy");
-    let rx = parse_attrs(&node_item, "rx");
-    let ry = parse_attrs(&node_item, "ry");
-
-    let cx_p_rx = cx + rx;
-    let cx_m_rx = cx - rx;
- 
-
-    let formatted_string = format!(
-        "M {cx_p_rx},{cy} \
-    A {rx},{ry} 0 1,0 {cx_m_rx},{cy} \
-    A {rx},{ry} 0 1,0 {cx_p_rx},{cy}"
-    );
-    
-
-    return formatted_string;
-}
-
-pub fn parse_line(node_item: Node) -> String {
-    //<line x1 y1 x2 y2>	M x1,y1 L x2,y2
-
-    let x1 = parse_attrs(&node_item, "x1");
-    let y1 = parse_attrs(&node_item, "y1");
-    let x2 = parse_attrs(&node_item, "x2");
-    let y2 = parse_attrs(&node_item, "y2");
-
-    let formatted_string = format!("M {x1},{y1} L {x2},{y2}");
-
-    return formatted_string;
-}
-
-pub fn parse_polyline(node_item: Node) -> String {
-    /**
-     * <polyline points="x1,y1 x2,y2 ...">	M x1,y1 L x2,y2 L x3,y3 ...
-     * 
-     */
-
-    let points = get_attr_string(&node_item, "points").unwrap_or(String::from(""));
-
-    if points.len() <= 1 {
-        return String::new();
+    for cap in Regex::new(r#"<circle\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::circle_to_path(cap.as_str()));
     }
-    
-    // "10,20 30,40 50,60" => ["10,20", "30,40", "50,60"]
-    let points_vec = points
-        .split_whitespace() // безопаснее, чем split(" ")
-        .filter(|s| !s.trim().is_empty())
-        .collect::<Vec<_>>();
-    
-    let d = points_vec
-        .iter()
-        .enumerate()
-        .filter_map(|(i, point)| {
-            let parts = point.split(',').collect::<Vec<_>>();
-            if parts.len() != 2 {
-                return None; // пропустить некорректную точку
+    for cap in Regex::new(r#"<ellipse\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::ellipse_to_path(cap.as_str()));
+    }
+    for cap in Regex::new(r#"<line\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::line_to_path(cap.as_str()));
+    }
+    for cap in Regex::new(r#"<polygon\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::polyline_to_path(cap.as_str(), true));
+    }
+    for cap in Regex::new(r#"<polyline\b[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(xml::polyline_to_path(cap.as_str(), false));
+    }
+    for cap in Regex::new(r#"<path\b[^>]+d="[^"]+"[^>]*/?>"#).unwrap().find_iter(&content) {
+        path_data.push(cap.as_str().to_string());
+    }
+
+    // Объединённый SVG
+    if let Some(viewbox) = xml::extract(&content_clone, "viewBox") {
+        output = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}">
+<path d="{}"/>
+</svg>"#,
+            viewbox,
+            path_data
+                .iter()
+                .filter_map(|p| xml::extract(p, "d"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
+
+    return output;
+}
+
+pub fn rect_to_path(tag: &str) -> String {
+    let x = extract(tag, "x").unwrap_or("0".to_string());
+    let y = extract(tag, "y").unwrap_or("0".to_string());
+    let w = extract(tag, "width").unwrap_or("0".to_string());
+    let h = extract(tag, "height").unwrap_or("0".to_string());
+    format!(r#"<path d="M{x},{y} h{w} v{h} h-{w} Z"/>"#)
+}
+
+pub fn circle_to_path(tag: &str) -> String {
+    let cx = extract(tag, "cx").unwrap_or("0".to_string());
+    let cy = extract(tag, "cy").unwrap_or("0".to_string());
+    let r = extract(tag, "r").unwrap_or("0".to_string());
+    format!(
+        r#"<path d="M{cx},{cy} m-{r},0 a{r},{r} 0 1,0 {r2},0 a{r},{r} 0 1,0 -{r2},0"/>"#,
+        cx = cx,
+        cy = cy,
+        r = r,
+        r2 = r.parse::<f32>().unwrap_or(0.0) * 2.0
+    )
+}
+
+pub fn ellipse_to_path(tag: &str) -> String {
+    let cx = extract(tag, "cx").unwrap_or("0".to_string());
+    let cy = extract(tag, "cy").unwrap_or("0".to_string());
+    let rx = extract(tag, "rx").unwrap_or("0".to_string());
+    let ry = extract(tag, "ry").unwrap_or("0".to_string());
+    format!(
+        r#"<path d="M{cx},{cy} m-{rx},0 a{rx},{ry} 0 1,0 {rx2},0 a{rx},{ry} 0 1,0 -{rx2},0"/>"#,
+        cx = cx,
+        cy = cy,
+        rx = rx,
+        ry = ry,
+        rx2 = rx.parse::<f32>().unwrap_or(0.0) * 2.0
+    )
+}
+
+pub fn line_to_path(tag: &str) -> String {
+    let x1 = extract(tag, "x1").unwrap_or("0".to_string());
+    let y1 = extract(tag, "y1").unwrap_or("0".to_string());
+    let x2 = extract(tag, "x2").unwrap_or("0".to_string());
+    let y2 = extract(tag, "y2").unwrap_or("0".to_string());
+    format!(r#"<path d="M{x1},{y1} L{x2},{y2}"/>"#)
+}
+
+pub fn polyline_to_path(tag: &str, close: bool) -> String {
+    if let Some(points) = extract(tag, "points") {
+        let mut parts = points.split_whitespace();
+        if let Some(start) = parts.next() {
+            let mut d = format!("M{}", start);
+            for p in parts {
+                d += &format!(" L{}", p);
             }
-            let x = parts[0].trim();
-            let y = parts[1].trim();
-            Some(if i == 0 {
-                format!("M {x},{y}")
-            } else {
-                format!("L {x},{y}")
-            })
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-    
-    return d;
+            if close {
+                d += " Z";
+            }
+            return format!(r#"<path d="{}"/>"#, d);
+        }
+    }
+    "".into()
 }
 
-pub fn parse_polygon(node_item: Node) -> String {
-    /**
-     * <polygon points="x1,y1 x2,y2 ...">	M x1,y1 L x2,y2 L x3,y3 ... Z
-     * 
-     */
-
-     let d_from_polyline = parse_polyline(node_item);
-
-    if d_from_polyline.is_empty() {
-        return String::new();
-    }
-
-    return format!("{d_from_polyline} Z")
+pub fn extract(tag: &str, attr: &str) -> Option<String> {
+    let pattern = format!(r#"{attr}="([^"]+)""#);
+    Regex::new(&pattern)
+        .ok()?
+        .captures(tag)
+        .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
 }
