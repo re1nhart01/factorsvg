@@ -1,7 +1,5 @@
 use regex::Regex;
 
-use crate::xml;
-
 pub fn filter_and_fix(mut content: String) -> String {
 
     let content_clone = content.clone();
@@ -21,29 +19,29 @@ pub fn filter_and_fix(mut content: String) -> String {
     }
 
     for cap in Regex::new(r#"<rect\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::rect_to_path(cap.as_str()));
+        path_data.push(rect_to_path(cap.as_str()));
     }
     for cap in Regex::new(r#"<circle\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::circle_to_path(cap.as_str()));
+        path_data.push(circle_to_path(cap.as_str()));
     }
     for cap in Regex::new(r#"<ellipse\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::ellipse_to_path(cap.as_str()));
+        path_data.push(ellipse_to_path(cap.as_str()));
     }
     for cap in Regex::new(r#"<line\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::line_to_path(cap.as_str()));
+        path_data.push(line_to_path(cap.as_str()));
     }
     for cap in Regex::new(r#"<polygon\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::polyline_to_path(cap.as_str(), true));
+        path_data.push(polyline_to_path(cap.as_str(), true));
     }
     for cap in Regex::new(r#"<polyline\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::polyline_to_path(cap.as_str(), false));
+        path_data.push(polyline_to_path(cap.as_str(), false));
     }
     for cap in Regex::new(r#"<path\b[^>]+d="[^"]+"[^>]*/?>"#).unwrap().find_iter(&content) {
         path_data.push(cap.as_str().to_string());
     }
 
     // Объединённый SVG
-    if let Some(viewbox) = xml::extract(&content_clone, "viewBox") {
+    if let Some(viewbox) = extract(&content_clone, "viewBox") {
         output = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}">
 <path d="{}"/>
@@ -51,7 +49,7 @@ pub fn filter_and_fix(mut content: String) -> String {
             viewbox,
             path_data
                 .iter()
-                .filter_map(|p| xml::extract(p, "d"))
+                .filter_map(|p| extract(p, "d"))
                 .collect::<Vec<_>>()
                 .join(" ")
         );

@@ -1,63 +1,83 @@
-use regex::Regex;
+use clap::Parser;
+use std::{fs};
 
-mod fs;
+mod fs_utils;
 mod xml;
 mod args;
 
 fn main() {
-    let input = fs::read_file_as_text("src/heating.svg").expect("Can't read file");
-    let mut output = String::new();
+    let arg = args::Arguments::parse();
 
-    let mut path_data = Vec::new();
-    let mut content = input.clone();
+    let is_multifile = arg.multi;
+    if (is_multifile) {
+        let is_ok = run_multiple_files(arg.input.clone(), arg.output.clone(), arg.multithread);
+        println!("Status of work: {} with args input: {} output: {} multithread: {} mutliple: {}", is_ok, arg.input, arg.output, arg.multithread, arg.multi);
+    } else {
+        let is_ok = run_single_file(arg.input.clone(), arg.output.clone());
+        println!("Status of work: {} with args input: {} output: {} multithread: {} mutliple: {}", is_ok, arg.input, arg.output, false, false);
+    }
+}
 
-    let filters = [
-        r"<defs[\s\S]*?</defs>",
-        r#"<g[^>]*>"#, r"</g>",
-        r#"transform="[^"]*""#, r#"style="[^"]*""#,
-        r#"stroke="[^"]*""#, r#"fill="[^"]*""#,
-    ];
-    for f in filters {
-        let re = Regex::new(f).unwrap();
-        content = re.replace_all(&content, "").to_string();
-    }
+fn run_single_file(path: String, output: String) -> bool {
+    let input = fs_utils::read_file_as_text(path.as_str()).expect("Can't read file");
 
-    for cap in Regex::new(r#"<rect\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::rect_to_path(cap.as_str()));
-    }
-    for cap in Regex::new(r#"<circle\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::circle_to_path(cap.as_str()));
-    }
-    for cap in Regex::new(r#"<ellipse\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::ellipse_to_path(cap.as_str()));
-    }
-    for cap in Regex::new(r#"<line\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::line_to_path(cap.as_str()));
-    }
-    for cap in Regex::new(r#"<polygon\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::polyline_to_path(cap.as_str(), true));
-    }
-    for cap in Regex::new(r#"<polyline\b[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(xml::polyline_to_path(cap.as_str(), false));
-    }
-    for cap in Regex::new(r#"<path\b[^>]+d="[^"]+"[^>]*/?>"#).unwrap().find_iter(&content) {
-        path_data.push(cap.as_str().to_string());
+    let result = xml::filter_and_fix(input);
+
+    
+    if let Some(error) = fs_utils::create_file(String::from(output), result) {
+        println!("{}", error);
     }
 
-    // Объединённый SVG
-    if let Some(viewbox) = xml::extract(&input, "viewBox") {
-        output = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}">
-<path d="{}"/>
-</svg>"#,
-            viewbox,
-            path_data
-                .iter()
-                .filter_map(|p| xml::extract(p, "d"))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+    return false;
+}
+
+
+fn run_multiple_files(path: String, output: String, is_multithread: bool) -> bool {
+    let mut handles = vec![];
+
+    if let Ok(dir) = fs::read_dir(&path) {
+        for file in dir.flatten() {
+            let entry = file.path();
+
+            if entry.is_file() {
+                if let Some(ext) = entry.extension().and_then(|e| e.to_str()) {
+                    if ext == "svg" {
+                        let input_path = entry.clone();
+                        let output_path = output.clone();
+
+                        if is_multithread {
+                            let handle = std::thread::spawn(move || {
+                                run_single_file(input_path.to_string_lossy().to_string(),
+                                [output_path,
+                                        String::from("fixed_"),
+                                         entry.
+                                         file_name().
+                                         unwrap().
+                                         to_string_lossy().
+                                         to_string()].join(""));
+                            });
+                            handles.push(handle);
+                        } else {
+                            run_single_file(
+                                input_path.to_string_lossy().to_string(),
+                                 [output_path,
+                                         String::from("fixed_"),
+                                          entry.
+                                          file_name().
+                                          unwrap().
+                                          to_string_lossy().
+                                          to_string()].join(""));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Ждем завершения всех потоков
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 
-    fs::create_file(String::from("fixed_out.svg"), output).expect("Can't write file");
+    true
 }
