@@ -27,3 +27,15 @@ pub fn extract_viewbox_width(viewbox: String) -> u32 {
 
     0u32
 }
+
+pub fn extract_viewbox_height(viewbox: String) -> u32 {
+    let parts: Vec<&str> = viewbox.trim().split_whitespace().collect();
+
+    if parts.len() == 4 {
+        if let Ok(width) = parts[3].parse::<u32>() {
+            return width;
+        }
+    }
+
+    0u32
+}

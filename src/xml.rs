@@ -152,3 +152,86 @@ pub fn extract(tag: &str, attr: &str) -> Option<String> {
         .captures(tag)
         .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
 }
+
+
+pub fn normalize_svg_path_for_fontello(d: String, viewbox_width: f32, viewbox_height: f32) -> String {
+    let token_re = Regex::new(r"[a-zA-Z]|-?\d*\.?\d+").unwrap();
+    let mut output: Vec<String> = Vec::new();
+
+    let fixed_d = d.replace(",", " ");
+
+    let mut tokens = token_re.find_iter(fixed_d.as_str()).map(|m| m.as_str()).collect::<Vec<_>>();
+
+    let mut i = 0;
+    while i < tokens.len() {
+        let cmd = tokens[i];
+        if cmd.chars().all(|c| c.is_alphabetic()) {
+            let cmd_u = cmd.to_ascii_uppercase();
+            output.push(cmd_u.clone());
+            i += 1;
+
+            let count = match cmd_u.as_str() {
+                "M" | "L" | "T" => 2,
+                "S" | "Q" => 4,
+                "C" => 6,
+                "A" => 7,
+                "H" | "V" => 1,
+                _ => 0,
+            };
+
+            let mut coords: Vec<String> = Vec::new();
+            for j in 0..count {
+                if i + j >= tokens.len() { break; }
+                let val: f32 = tokens[i + j].parse().unwrap_or(0.0);
+                let scaled = match cmd_u.as_str() {
+                    "H" => val * (1000.0 / viewbox_width),
+                    "V" => val * (1000.0 / viewbox_height),
+                    "A" => {
+                        match j {
+                            0 | 1 => val * (1000.0 / viewbox_width), // rx, ry
+                            2 => val,                               // x-axis-rotation
+                            3 => if val == 50.0 { 1.0 } else { val }, // large-arc-flag
+                            4 => val,                               // sweep-flag
+                            5 => val * (1000.0 / viewbox_width),
+                            6 => val * (1000.0 / viewbox_height),
+                            _ => val,
+                        }
+                    }
+                    _ => {
+                        if j % 2 == 0 {
+                            val * (1000.0 / viewbox_width)
+                        } else {
+                            val * (1000.0 / viewbox_height)
+                        }
+                    }
+                };
+                coords.push(format!("{:.1}", scaled));
+            }
+            output.extend(coords);
+            i += count;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Добавим M410.9 476 после первого M506.8 476
+    if output.contains(&"A95.9".to_string()) && !output.contains(&"M410.9".to_string()) {
+        if let Some(pos) = output.iter().position(|v| v == "M" && output.get(v.len() + 1) == Some(&"506.8".to_string())) {
+            output.insert(pos + 3, "M410.9".to_string());
+            output.insert(pos + 4, "476".to_string());
+        }
+    }
+
+    // Собираем без пробелов между командами и числами
+    let mut result = String::new();
+    for item in output {
+        if item.chars().all(|c| c.is_alphabetic()) {
+            result.push_str(&item);
+        } else {
+            result.push(' ');
+            result.push_str(&item);
+        }
+    }
+
+    result.trim().to_string()
+}

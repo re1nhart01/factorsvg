@@ -83,7 +83,12 @@ pub fn run_auto_json(path_inputs: String, path_to_json: String) {
                         if let Ok(file_content) = fs::read_to_string(&path) {
                             let (_, _d, _view_box) = xml::filter_and_fix(file_content.clone());
                             let file_name = path.file_stem().unwrap().to_string_lossy().to_string();
-                            reloaded_config = json::add_glyph(reloaded_config, file_name, SvgData{ path: _d, width: utils::extract_viewbox_width(String::from(_view_box)) });
+
+                            let view_box_w = utils::extract_viewbox_width(String::from(_view_box.clone()));
+                            let view_box_h = utils::extract_viewbox_height(String::from(_view_box));
+                            let rescaled_d = xml::normalize_svg_path_for_fontello(_d, view_box_w as f32, view_box_h.clone() as f32);
+
+                            reloaded_config = json::add_glyph(reloaded_config, file_name, SvgData{ path: rescaled_d, width: 1000 });
                         }    
                     }
                 }
