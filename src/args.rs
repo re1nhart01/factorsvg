@@ -14,4 +14,10 @@ pub struct Arguments {
 
     #[arg(long)]
     pub multi: bool, // is multi files
+
+    #[arg(long)]
+    pub config: String,
+
+    #[arg(long)]
+    pub json: bool,
 }

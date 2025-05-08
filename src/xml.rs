@@ -1,6 +1,6 @@
 use regex::Regex;
 
-pub fn filter_and_fix(mut content: String) -> String {
+pub fn filter_and_fix(mut content: String) -> (String, String, String) {
     let content_clone = content.clone();
 
     let mut output = String::new();
@@ -63,22 +63,25 @@ pub fn filter_and_fix(mut content: String) -> String {
         path_data.push(cap.as_str().to_string());
     }
 
-    // Объединённый SVG
+
+    let svg_d = path_data
+    .iter()
+    .filter_map(|p| extract(p, "d"))
+    .collect::<Vec<_>>()
+    .join(" ");
+
     if let Some(viewbox) = extract(&content_clone, "viewBox") {
         output = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}">
 <path d="{}"/>
 </svg>"#,
             viewbox,
-            path_data
-                .iter()
-                .filter_map(|p| extract(p, "d"))
-                .collect::<Vec<_>>()
-                .join(" ")
+            svg_d            
         );
+        return (output, svg_d, viewbox);
     }
 
-    return output;
+    return (String::new(), String::new(), String::new())
 }
 
 pub fn rect_to_path(tag: &str) -> String {
