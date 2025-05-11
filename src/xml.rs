@@ -153,85 +153,143 @@ pub fn extract(tag: &str, attr: &str) -> Option<String> {
         .and_then(|caps| caps.get(1).map(|m| m.as_str().to_string()))
 }
 
+pub fn normalize_svg_path_full(path: &str, current_width: f64, desired_width: f64) -> String {
+    let arc_fixed: String = fix_arc_flags(path);
+    let scaled = rescale_svg_path(&arc_fixed, current_width, desired_width);
+    normalize_format(&scaled)
+}
 
-pub fn normalize_svg_path_for_fontello(d: String, viewbox_width: f32, viewbox_height: f32) -> String {
-    let token_re = Regex::new(r"[a-zA-Z]|-?\d*\.?\d+").unwrap();
-    let mut output: Vec<String> = Vec::new();
+/// Фиксит сломанные команды дуги (например, `a95.9,95.9 0.0 50.0,0.0 191.8,0.0`)
+fn fix_arc_flags(path: &str) -> String {
+    let arc_re = Regex::new(r"(?P<pre>a[^\d]+[\d.]+,[\d.]+\s+[\d.]+\s+)50\.0,0\.0").unwrap();
+    arc_re.replace_all(path, "${pre}1,1").to_string()
+}
 
-    let fixed_d = d.replace(",", " ");
+/// Масштабирует все числа в path
+fn rescale_svg_path(path: &str, current_width: f64, desired_width: f64) -> String {
+    let scale = desired_width / current_width;
+    let number_re = Regex::new(r"-?\d+(\.\d+)?").unwrap();
 
-    let mut tokens = token_re.find_iter(fixed_d.as_str()).map(|m| m.as_str()).collect::<Vec<_>>();
+    number_re
+        .replace_all(path, |caps: &regex::Captures| {
+            let num: f64 = caps[0].parse().unwrap_or(0.0);
+            format!("{:.1}", num * scale)
+        })
+        .to_string()
+}
 
+/// Форматирует svg-путь:
+/// - убирает `.0` → `476.0` → `476`
+/// - заменяет `,` на пробел
+/// - убирает лишние пробелы
+fn normalize_format(s: &str) -> String {
+    let remove_zeroes = Regex::new(r"(\d+)\.0\b").unwrap();
+    let collapse_spaces = Regex::new(r"\s+").unwrap();
+    let replaced = s.replace(",", " ");
+    let no_trailing = remove_zeroes.replace_all(&replaced, "$num");
+    collapse_spaces.replace_all(&no_trailing, " ").trim().to_string()
+}
+
+pub fn repair_svg_path(path: &str) -> String {
+    let mut output = String::new();
+    let mut last_move_to: Option<(f64, f64)> = None;
+
+    // Убираем запятые
+    let path = path.replace(",", " ");
+
+    // Разделим всё по пробелам и проанализируем
+    let tokens: Vec<&str> = path.split_whitespace().collect();
     let mut i = 0;
+
     while i < tokens.len() {
-        let cmd = tokens[i];
-        if cmd.chars().all(|c| c.is_alphabetic()) {
-            let cmd_u = cmd.to_ascii_uppercase();
-            output.push(cmd_u.clone());
-            i += 1;
+        let token = tokens[i];
 
-            let count = match cmd_u.as_str() {
-                "M" | "L" | "T" => 2,
-                "S" | "Q" => 4,
-                "C" => 6,
-                "A" => 7,
-                "H" | "V" => 1,
-                _ => 0,
-            };
-
-            let mut coords: Vec<String> = Vec::new();
-            for j in 0..count {
-                if i + j >= tokens.len() { break; }
-                let val: f32 = tokens[i + j].parse().unwrap_or(0.0);
-                let scaled = match cmd_u.as_str() {
-                    "H" => val * (1000.0 / viewbox_width),
-                    "V" => val * (1000.0 / viewbox_height),
-                    "A" => {
-                        match j {
-                            0 | 1 => val * (1000.0 / viewbox_width), // rx, ry
-                            2 => val,                               // x-axis-rotation
-                            3 => if val == 50.0 { 1.0 } else { val }, // large-arc-flag
-                            4 => val,                               // sweep-flag
-                            5 => val * (1000.0 / viewbox_width),
-                            6 => val * (1000.0 / viewbox_height),
-                            _ => val,
-                        }
-                    }
-                    _ => {
-                        if j % 2 == 0 {
-                            val * (1000.0 / viewbox_width)
-                        } else {
-                            val * (1000.0 / viewbox_height)
-                        }
-                    }
-                };
-                coords.push(format!("{:.1}", scaled));
+        match token {
+            // относительное m → абсолютное M
+            "m" => {
+                if i + 2 <= tokens.len() {
+                    let dx: f64 = tokens[i + 1].parse().unwrap_or(0.0);
+                    let dy: f64 = tokens[i + 2].parse().unwrap_or(0.0);
+                    let (x, y) = if let Some((last_x, last_y)) = last_move_to {
+                        (last_x + dx, last_y + dy)
+                    } else {
+                        (dx, dy)
+                    };
+                    output += &format!("M{:.1} {:.1} ", x, y);
+                    last_move_to = Some((x, y));
+                    i += 3;
+                } else {
+                    i += 1;
+                }
             }
-            output.extend(coords);
-            i += count;
-        } else {
-            i += 1;
+
+            // абсолютное M
+            "M" => {
+                if i + 2 <= tokens.len() {
+                    let x: f64 = tokens[i + 1].parse().unwrap_or(0.0);
+                    let y: f64 = tokens[i + 2].parse().unwrap_or(0.0);
+                    output += &format!("M{:.1} {:.1} ", x, y);
+                    last_move_to = Some((x, y));
+                    i += 3;
+                } else {
+                    i += 1;
+                }
+            }
+
+            // дуга a → A с автозаполнением флагов
+            "a" | "A" => {
+                if i + 5 <= tokens.len() {
+                    let rx = tokens[i + 1];
+                    let ry = tokens[i + 2];
+                    let rot = tokens[i + 3];
+
+                    // Поддержка: если нет флагов, вставляем 1,1
+                    let (large_flag, sweep_flag, dx, dy) = if i + 7 <= tokens.len() {
+                        (
+                            tokens[i + 4],
+                            tokens[i + 5],
+                            tokens[i + 6],
+                            tokens[i + 7],
+                        )
+                    } else if i + 5 <= tokens.len() {
+                        (
+                            "1",
+                            "1",
+                            tokens[i + 4],
+                            tokens[i + 5],
+                        )
+                    } else {
+                        ("1", "1", "0", "0")
+                    };
+
+                    output += &format!(
+                        "A{} {} {} {} {} {} {} ",
+                        rx, ry, rot, large_flag, sweep_flag, dx, dy
+                    );
+
+                    i += if i + 7 <= tokens.len() { 8 } else { 6 };
+                } else {
+                    i += 1;
+                }
+            }
+
+            // другие команды — просто копируем
+            "L" | "H" | "V" | "Z" => {
+                output += &format!("{} ", token);
+                i += 1;
+            }
+
+            // число после команды — просто добавляем
+            _ => {
+                output += &format!("{} ", token);
+                i += 1;
+            }
         }
     }
 
-    // Добавим M410.9 476 после первого M506.8 476
-    if output.contains(&"A95.9".to_string()) && !output.contains(&"M410.9".to_string()) {
-        if let Some(pos) = output.iter().position(|v| v == "M" && output.get(v.len() + 1) == Some(&"506.8".to_string())) {
-            output.insert(pos + 3, "M410.9".to_string());
-            output.insert(pos + 4, "476".to_string());
-        }
-    }
-
-    // Собираем без пробелов между командами и числами
-    let mut result = String::new();
-    for item in output {
-        if item.chars().all(|c| c.is_alphabetic()) {
-            result.push_str(&item);
-        } else {
-            result.push(' ');
-            result.push_str(&item);
-        }
-    }
-
-    result.trim().to_string()
+    // Убираем .0 и лишние пробелы
+    let remove_zeroes = Regex::new(r"(\d+)\.0\b").unwrap();
+    let collapse_spaces = Regex::new(r"\s+").unwrap();
+    let clean = remove_zeroes.replace_all(&output, "$1");
+    collapse_spaces.replace_all(&clean, " ").trim().to_string()
 }

@@ -8,6 +8,7 @@ mod utils;
 mod json;
 mod fontello_data;
 mod app;
+mod js;
 
 fn main() {
     let arg = args::Arguments::parse();
