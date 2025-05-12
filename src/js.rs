@@ -1,11 +1,21 @@
-use std::process::Command;
+use std::{env, path::PathBuf, process::Command};
 
 
 pub const FILE_NAME: &'static str = "scaler.js";
 
-pub fn read_scaler_js_scale(d: String, scale: u32) -> String {
+pub fn read_scaler_js_scale(d: String, scale: u32, mut scaler_path: String) -> String {
+    let exe_path: PathBuf = env::current_exe()
+    .map(|p| p.parent().unwrap().join(FILE_NAME))
+    .unwrap_or_else(|_| PathBuf::from(FILE_NAME));
+
+    println!("Execution scaler.js path: {}", exe_path.to_string_lossy().clone());
+
+    if scaler_path == String::from("default") {
+        scaler_path = String::from(exe_path.to_string_lossy());
+    }
+
     let stdout_scaler = Command::new("node")
-        .arg(FILE_NAME)
+        .arg(scaler_path)
         .arg(d)
         .arg(scale.to_string())
         .output();

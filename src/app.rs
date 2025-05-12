@@ -67,7 +67,7 @@ pub fn run_multiple_files(path: String, output: String, is_multithread: bool) ->
 
 
 
-pub fn run_auto_json(path_inputs: String, path_to_json: String) {
+pub fn run_auto_json(path_inputs: String, path_to_json: String, scaler_path: String) {
     let json_data = json::read_json_file_fontello(path_to_json).unwrap();
 
     let mut reloaded_config = json::reload_config(json_data, String::from("ASC"));
@@ -92,7 +92,7 @@ pub fn run_auto_json(path_inputs: String, path_to_json: String) {
 
                             let scale = scale_x.min(scale_y);
 
-                            let rescaled_d = js::read_scaler_js_scale(_d, scale);
+                            let rescaled_d = js::read_scaler_js_scale(_d, scale, scaler_path.clone());
                             reloaded_config = json::add_glyph(reloaded_config, file_name, SvgData{ path: rescaled_d, width: 1000 });
                         }    
                     }

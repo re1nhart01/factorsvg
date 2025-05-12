@@ -52,6 +52,6 @@ fn main() {
             exit(0);
         }
 
-        app::run_auto_json(arg.input, arg.config);
+        app::run_auto_json(arg.input, arg.config, arg.scaler);
     }
 }

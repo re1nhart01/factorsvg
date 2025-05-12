@@ -20,4 +20,7 @@ pub struct Arguments {
 
     #[arg(long)]
     pub json: bool,
+
+    #[arg(short, long, requires_if("true", "json"))]
+    pub scaler: String
 }
